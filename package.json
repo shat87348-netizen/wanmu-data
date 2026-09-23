@@ -1,0 +1,27 @@
+{
+  "name": "data-processing-frontend",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "^22.19.0 || ^24.11.0 || >=26.0.0"
+  },
+  "scripts": {
+    "build": "nuxt build",
+    "build:cloudflare": "nuxt build --preset=cloudflare_pages",
+    "dev": "nuxi dev --host 0.0.0.0",
+    "generate": "nuxt generate",
+    "preview": "nuxt preview",
+    "test:api-contract": "node scripts/check-web-api-contract.mjs",
+    "test:api-snapshot": "node scripts/snapshot-apifox.mjs",
+    "test:api-all": "npm run test:api-snapshot && npm run test:api-contract",
+    "postinstall": "nuxt prepare"
+  },
+  "dependencies": {
+    "@nuxt/ui": "latest",
+    "echarts": "^6.1.0",
+    "nuxt": "latest"
+  },
+  "devDependencies": {
+    "@iconify-json/lucide": "^1.2.121"
+  }
+}
