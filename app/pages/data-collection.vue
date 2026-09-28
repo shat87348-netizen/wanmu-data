@@ -91,6 +91,29 @@ const collectionOverviewLoading = ref(false)
 const collectionEventsData = ref<unknown>(null)
 const collectionEventsLoading = ref(false)
 let collectionRefreshTimer: ReturnType<typeof setInterval> | undefined
+const refreshCollectionData = () => {
+  void loadCollectionOverview(true)
+  void loadCollectionEvents(true)
+}
+const startCollectionRefresh = () => {
+  if (collectionRefreshTimer) return
+  collectionRefreshTimer = setInterval(refreshCollectionData, 3000)
+}
+const stopCollectionRefresh = () => {
+  if (!collectionRefreshTimer) return
+  clearInterval(collectionRefreshTimer)
+  collectionRefreshTimer = undefined
+}
+// 标签页切到后台时暂停 3 秒轮询，切回来立即补一次刷新，避免看着页面时没有任何变化，
+// 只是省掉不在看这页时白白发的请求。
+const handleVisibilityChange = () => {
+  if (document.visibilityState === 'hidden') {
+    stopCollectionRefresh()
+  } else {
+    refreshCollectionData()
+    startCollectionRefresh()
+  }
+}
 let collectionOverviewSilentRefreshing = false
 let collectionEventsSilentRefreshing = false
 const isInterfaceDialogOpen = ref(false)
@@ -708,10 +731,8 @@ onMounted(() => {
   void loadOptions()
   void loadCollectionOverview(true)
   void loadCollectionEvents(true)
-  collectionRefreshTimer = setInterval(() => {
-    void loadCollectionOverview(true)
-    void loadCollectionEvents(true)
-  }, 3000)
+  if (document.visibilityState !== 'hidden') startCollectionRefresh()
+  document.addEventListener('visibilitychange', handleVisibilityChange)
 })
 
 watch(taskId, () => {
@@ -722,7 +743,8 @@ watch(taskId, () => {
 })
 
 onUnmounted(() => {
-  if (collectionRefreshTimer) clearInterval(collectionRefreshTimer)
+  stopCollectionRefresh()
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
 })
 </script>
 

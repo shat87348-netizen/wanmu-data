@@ -1,7 +1,18 @@
 <script setup lang="ts">
 import type { TableColumn } from '@nuxt/ui'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import * as echarts from 'echarts'
+import * as echarts from 'echarts/core'
+import { LineChart, PieChart } from 'echarts/charts'
+import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/components'
+import { CanvasRenderer } from 'echarts/renderers'
+import type { ComposeOption } from 'echarts/core'
+import type { GridComponentOption, LegendComponentOption, TooltipComponentOption } from 'echarts/components'
+import type { LineSeriesOption, PieSeriesOption } from 'echarts/charts'
+
+// 只注册本页实际用到的图表类型/组件，体积比整包 `import * as echarts from 'echarts'` 小得多。
+echarts.use([LineChart, PieChart, GridComponent, LegendComponent, TooltipComponent, CanvasRenderer])
+
+type EChartsOption = ComposeOption<LineSeriesOption | PieSeriesOption | GridComponentOption | LegendComponentOption | TooltipComponentOption>
 
 definePageMeta({ middleware: 'auth' })
 
@@ -149,7 +160,7 @@ const drawCollectionChart = async () => {
   const series = lineChart?.series || []
   const names = series.map(seriesName)
   const hasData = hasCollectionChartData.value
-  const option: echarts.EChartsOption = collectionView.value === 'pie'
+  const option: EChartsOption = collectionView.value === 'pie'
     ? {
         backgroundColor: 'transparent', color: chartColors, tooltip: { trigger: 'item' }, legend: getLegendOption(names),
         graphic: hasData ? [] : [{ type: 'text', left: 'center', top: 'middle', style: { text: collectionLoading.value ? '正在加载…' : '暂无采集统计数据', fill: '#7f91a4', fontSize: 13 } }],

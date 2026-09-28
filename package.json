@@ -17,9 +17,9 @@
     "postinstall": "nuxt prepare"
   },
   "dependencies": {
-    "@nuxt/ui": "latest",
+    "@nuxt/ui": "^4.10.0",
     "echarts": "^6.1.0",
-    "nuxt": "latest"
+    "nuxt": "^4.5.1"
   },
   "devDependencies": {
     "@iconify-json/lucide": "^1.2.121"
