@@ -133,6 +133,7 @@ const protocolRulesLoading = ref(false)
 const protocolSources = ref<DeviceSatellite[]>([])
 const selectedProtocolSourceId = ref<number | null>(null)
 const protocolRules = ref<ProtocolRule[]>([])
+const protocolRulesBatchSaving = ref(false)
 const protocolSourceScope = ref<ProtocolSourceScope>('satellite')
 const interfaceForm = reactive({
   interfaceName: '',
@@ -485,6 +486,50 @@ const closeProtocolDialog = () => {
 // 表格只呈现可编辑的部分字段；提交时必须保留查询结果中的完整规则。
 const protocolField = (rule: ProtocolRule): ProtocolRule => ({ ...rule })
 
+// rules/batch-update 是完整更新：每条都要带上全部可编辑字段，不提交 systemName/isDeleted/createTime/updateTime。
+// id、deviceSatelliteId、systemId 原样带回（不允许通过这个入口把参数挪到别的设备或系统）。
+const batchUpdateItem = (rule: ProtocolRule) => ({
+  id: rule.id,
+  deviceSatelliteId: rule.deviceSatelliteId,
+  systemId: rule.systemId ?? null,
+  tableIndex: rule.tableIndex ?? null,
+  bitWidth: rule.bitWidth ?? null,
+  telemetryName: rule.telemetryName ?? null,
+  telemetryCode: rule.telemetryCode ?? null,
+  formulaType: rule.formulaType ?? null,
+  formulaDesc: rule.formulaDesc ?? null,
+  processParam: rule.processParam ?? null,
+  decimalPlaces: rule.decimalPlaces ?? null,
+  alarmFlag: rule.alarmFlag === undefined || rule.alarmFlag === null || rule.alarmFlag === '' ? '0' : String(rule.alarmFlag),
+  normalValue: rule.normalValue ?? null,
+  warningValue: rule.warningValue ?? null,
+  stateChangeInfo: rule.stateChangeInfo ?? null,
+  commandCode: rule.commandCode ?? null,
+  controlChannel: rule.controlChannel ?? null,
+  mergeChannelCount: rule.mergeChannelCount ?? null,
+  delayChannel: rule.delayChannel ?? null,
+  storeFlag: rule.storeFlag === undefined || rule.storeFlag === null || rule.storeFlag === '' ? '0' : String(rule.storeFlag),
+  calibrationFormula: rule.calibrationFormula ?? null
+})
+
+// 选好参数解析配置来源、改完表格里的字段后一次性提交，而不是每改一格就单独调用一次接口。
+const submitProtocolRulesBatch = async () => {
+  if (!taskId.value || !protocolRules.value.length) return
+  protocolRulesBatchSaving.value = true
+  try {
+    const items = protocolRules.value.map(batchUpdateItem)
+    const updatedCount = await request<number>('/processing/rules/batch-update', {
+      method: 'POST',
+      body: { taskId: taskId.value, items }
+    })
+    toast.add({ title: `已提交 ${updatedCount ?? items.length} 条参数修改`, color: 'success' })
+  } catch (error) {
+    toast.add({ title: '参数批量修改失败', description: error instanceof Error ? error.message : '请稍后重试', color: 'error' })
+  } finally {
+    protocolRulesBatchSaving.value = false
+  }
+}
+
 const saveProtocol = async () => {
   const source = selectedProtocolSource.value
   const protocolType = Number(protocolForm.protocolType)
@@ -494,12 +539,17 @@ const saveProtocol = async () => {
     return
   }
 
-  const configParams: Record<string, unknown> = { ...protocolExtraParams.value, fields: protocolRules.value.map(protocolField) }
-  if (isPdxpProtocol.value) {
-    configParams.pdxphead = Object.fromEntries(
-      Object.entries(pdxpHeader).map(([key, value]) => [key, value.trim() || null])
-    )
-  }
+  // PDXP 不再提交 fields：后端按 deviceSatelliteId 加载该设备的参数解析配置作为解析字段，
+  // 这里的参数表只用于展示/编辑，实际改动通过下面的“提交全部修改”走 rules/batch-update。
+  // 其他协议（如 RPC）保持原有 fields 用法不变。
+  const configParams: Record<string, unknown> = isPdxpProtocol.value
+    ? {
+        deviceSatelliteId: source.id,
+        pdxphead: Object.fromEntries(
+          Object.entries(pdxpHeader).map(([key, value]) => [key, value.trim() || null])
+        )
+      }
+    : { ...protocolExtraParams.value, fields: protocolRules.value.map(protocolField) }
 
   const body: Record<string, unknown> = {
     taskId: taskId.value,
@@ -957,8 +1007,21 @@ onUnmounted(() => {
 
             <section class="protocol-rules-section" aria-label="参数解析配置">
               <header>
-                <div><h3>参数解析配置 <b>*</b></h3><p>来自“数据处理 / 参数解析配置 / {{ protocolSourceScope === 'satellite' ? '卫星' : '设备' }} / {{ selectedProtocolSource ? sourceLabel(selectedProtocolSource) : '未选择' }}”，可直接修改后用于本协议。</p></div>
-                <span v-if="selectedProtocolSource" class="rule-count">{{ protocolRules.length }} 条规则</span>
+                <div>
+                  <h3>参数解析配置 <b>*</b></h3>
+                  <p v-if="isPdxpProtocol">来自“数据处理 / 参数解析配置 / {{ protocolSourceScope === 'satellite' ? '卫星' : '设备' }} / {{ selectedProtocolSource ? sourceLabel(selectedProtocolSource) : '未选择' }}”。PDXP 直接使用该设备的解析配置，这里改完点击“提交全部修改”即可生效，不影响协议保存。</p>
+                  <p v-else>来自“数据处理 / 参数解析配置 / {{ protocolSourceScope === 'satellite' ? '卫星' : '设备' }} / {{ selectedProtocolSource ? sourceLabel(selectedProtocolSource) : '未选择' }}”，可直接修改后用于本协议。</p>
+                </div>
+                <div class="protocol-rules-actions">
+                  <span v-if="selectedProtocolSource" class="rule-count">{{ protocolRules.length }} 条规则</span>
+                  <UButton
+                    v-if="selectedProtocolSource && protocolRules.length"
+                    type="button"
+                    class="outline-button small"
+                    :disabled="protocolRulesBatchSaving"
+                    @click="submitProtocolRulesBatch"
+                  >{{ protocolRulesBatchSaving ? '提交中…' : '提交全部修改' }}</UButton>
+                </div>
               </header>
               <div v-if="protocolRulesLoading" class="protocol-source-empty">正在读取参数解析配置...</div>
               <div v-else-if="!selectedProtocolSource" class="protocol-source-empty">请先选择卫星或设备</div>
@@ -1769,6 +1832,7 @@ onUnmounted(() => {
 .protocol-rules-section h3 b { color: var(--ui-error); font-weight: 500; }
 .protocol-rules-section p { margin-top: 4px; color: var(--ui-text-muted); font-size: 11px; }
 .protocol-rules-section .rule-count { flex: none; margin-top: 0; padding-top: 0; color: var(--ui-text-muted); font-size: 11px; }
+.protocol-rules-actions { flex: none; display: flex; align-items: center; gap: 10px; }
 
 .protocol-rules-scroll {
   max-height: 300px;
